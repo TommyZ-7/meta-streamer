@@ -1,0 +1,53 @@
+# meta-streamer: TopazChat-compatible relay for live.meta-note-ex.com
+# MVP: RTMP ingest -> RTSP/TCP egress (remux only, no transcode).
+# ezStreamer input: rtmp://live.meta-note-ex.com/live
+# VRChat playback: rtspt://live.meta-note-ex.com/live/{key} (PC) / rtsp://... (Quest)
+
+logLevel: info
+logDestinations: [stdout]
+
+# --- RTSP (playback) ---
+rtsp: true
+# TCP first: AVPro "Use Low Latency" (rtspt://) uses TCP interleaved.
+rtspTransports: [tcp, udp]
+rtspAddress: :554
+rtpAddress: :8000
+rtcpAddress: :8001
+multicastIPRange: 224.1.0.0/16
+multicastRTPPort: 8002
+multicastRTCPPort: 8003
+
+# --- RTMP (ingest) ---
+rtmp: true
+rtmpAddress: :1935
+
+# --- Disabled for MVP (reduce surface/ports) ---
+hls: false
+webrtc: false
+srt: false
+moq: false
+api: false
+metrics: false
+pprof: false
+playback: false
+
+# --- Auth: Topaz-compatible open relay, restricted to live/* ---
+# Key is public (part of playback URL), same model as TopazChat.
+# P1 hardening: switch authMethod to http/jwt or add publish password.
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+        path: "~^live/"
+      - action: read
+        path: "~^live/"
+
+pathDefaults:
+  source: publisher
+  record: false
+
+paths:
+  all_others:

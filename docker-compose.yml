@@ -1,0 +1,25 @@
+services:
+  mediamtx:
+    # Pinned image recommended for releases, e.g. bluenviron/mediamtx:v1.15.2
+    image: ${MTX_IMAGE:-bluenviron/mediamtx:latest}
+    container_name: meta-streamer
+    restart: unless-stopped
+    # :554 allows Topaz-compatible URLs without port
+    # (rtspt://live.meta-note-ex.com/live/{key}).
+    # Host 8554 -> container 554 is an alias for clients that require explicit port.
+    ports:
+      - "1935:1935" # RTMP ingest
+      - "554:554" # RTSP (standard, Topaz-compatible)
+      - "8554:554" # RTSP (alias, explicit-port fallback)
+      - "8000:8000/udp" # RTP
+      - "8001:8001/udp" # RTCP
+    cap_add:
+      - NET_BIND_SERVICE # allow :554 bind as non-root
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    command: ["/mediamtx.yml"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

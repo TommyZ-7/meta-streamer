@@ -1,0 +1,4 @@
+.env
+recordings/
+*.log
+mediamtx.log
