@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for bitrate-watchdog.py (stdlib only, no server needed)."""
 import importlib.util
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -131,6 +132,71 @@ class TestBitrate(unittest.TestCase):
                 idx["i"] = i
                 wd.poll_once(state)
         self.assertEqual(kicks, [])
+
+
+    def test_poll_returns_ok_and_kicks(self):
+        wd.MAX_TOTAL_KBPS = 3000
+        wd.VIOLATION_LIMIT = 1  # kick on first over-limit sample
+        state = {"live/q": {"prev_bytes": 0, "prev_time": 1000.0, "violations": 0}}
+        item = {"name": "live/q", "inboundBytes": 2_500_000,
+                "source": {"id": "c3", "type": "rtmpConn"}}
+        with patch.object(wd, "api_get", return_value={"items": [item]}), \
+             patch.object(wd, "api_kick", return_value=True), \
+             patch.object(wd.time, "time", return_value=1005.0):
+            ok, kicks = wd.poll_once(state)
+        self.assertTrue(ok)
+        self.assertEqual(kicks, 1)
+
+    def test_poll_schema_invalid_is_failure(self):
+        for bad in ({"nope": []}, [], None, "items"):
+            with patch.object(wd, "api_get", return_value=bad):
+                ok, kicks = wd.poll_once({})
+            self.assertFalse(ok, bad)
+            self.assertEqual(kicks, 0)
+
+    def test_poll_api_error_is_failure(self):
+        with patch.object(wd, "api_get", side_effect=ConnectionError("down")):
+            ok, kicks = wd.poll_once({})
+        self.assertFalse(ok)
+        self.assertEqual(kicks, 0)
+
+    def test_validate_config_clamps(self):
+        old = (wd.MAX_TOTAL_KBPS, wd.POLL_INTERVAL, wd.VIOLATION_LIMIT,
+               wd.MAX_CONSECUTIVE_FAILURES, wd.HEARTBEAT_MAX_AGE)
+        try:
+            wd.MAX_TOTAL_KBPS = -1
+            wd.POLL_INTERVAL = 0
+            wd.VIOLATION_LIMIT = 0
+            wd.MAX_CONSECUTIVE_FAILURES = 0
+            wd.HEARTBEAT_MAX_AGE = -5
+            warns = wd.validate_config()
+            self.assertEqual(len(warns), 5)
+            self.assertEqual(
+                (wd.MAX_TOTAL_KBPS, wd.POLL_INTERVAL, wd.VIOLATION_LIMIT,
+                 wd.MAX_CONSECUTIVE_FAILURES, wd.HEARTBEAT_MAX_AGE),
+                (2500.0, 5.0, 3, 12, 90.0))
+        finally:
+            (wd.MAX_TOTAL_KBPS, wd.POLL_INTERVAL, wd.VIOLATION_LIMIT,
+             wd.MAX_CONSECUTIVE_FAILURES, wd.HEARTBEAT_MAX_AGE) = old
+
+    def test_heartbeat_fresh_and_check(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            hb = str(Path(td) / "hb")
+            old_file, old_age = wd.HEARTBEAT_FILE, wd.HEARTBEAT_MAX_AGE
+            try:
+                wd.HEARTBEAT_FILE = hb
+                wd.HEARTBEAT_MAX_AGE = 90.0
+                self.assertFalse(wd.heartbeat_fresh())  # missing
+                self.assertEqual(wd.healthcheck(), 1)
+                wd.write_heartbeat({"polls": 1, "kicks": 0, "failures": 0})
+                self.assertTrue(wd.heartbeat_fresh())
+                self.assertEqual(wd.healthcheck(), 0)
+                # stale mtime
+                os.utime(hb, (0, 0))
+                self.assertFalse(wd.heartbeat_fresh(now=10_000_000.0))
+            finally:
+                wd.HEARTBEAT_FILE, wd.HEARTBEAT_MAX_AGE = old_file, old_age
 
 
 if __name__ == "__main__":

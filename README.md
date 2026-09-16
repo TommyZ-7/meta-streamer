@@ -30,11 +30,12 @@ Combined ingress >`MAX_TOTAL_KBPS` (default 2500k) sustained over `POLL_INTERVAL
 
 Oracle VCN ingress (Security List / NSG), allow from `0.0.0.0/0`:
 
-- `1935/tcp` RTMP, `554/tcp` RTSP, `8554/tcp` RTSP alias, `8000-8001/udp` RTP/RTCP, `22/tcp` SSH
+- `1935/tcp` RTMP, `554/tcp` RTSP, `8554/tcp` RTSP alias, `8000-8001/udp` RTP/RTCP, `22/tcp` SSH, `80/tcp` traffic page
 
 Cloudflare DNS:
 
 - `A live -> <OCI_IP>`, Proxy **OFF** (gray cloud, DNS only). Proxy (orange) breaks RTMP/RTSP.
+- `A stats -> <OCI_IP>`, Proxy **ON** (orange cloud) for the public traffic page (`http://stats.meta-note-ex.com/`). HTTP only; no sensitive data.
 
 VM firewall is set by `scripts/provision.sh` (UFW same ports).
 
@@ -43,7 +44,7 @@ VM firewall is set by `scripts/provision.sh` (UFW same ports).
 ```bash
 # on VM, first time
 bash scripts/provision.sh
-mkdir -p /opt/meta-streamer/scripts && cp docker-compose.yml mediamtx.yml /opt/meta-streamer/ && cp scripts/bitrate-watchdog.py /opt/meta-streamer/scripts/
+mkdir -p /opt/meta-streamer/scripts /opt/meta-streamer/public /opt/meta-streamer/data && cp docker-compose.yml mediamtx.yml /opt/meta-streamer/ && cp scripts/bitrate-watchdog.py scripts/traffic.py scripts/watchdog-health.sh /opt/meta-streamer/scripts/
 cd /opt/meta-streamer && docker compose up -d && docker compose logs -f
 ```
 
@@ -66,6 +67,10 @@ ezStreamer: set Ingest URL to `rtmp://live.meta-note-ex.com/live`; PC/Quest copy
 
 - Logs: `docker compose logs -f` (json-file 10m x3). No recordings (`record: false`).
 - Watchdog: `docker compose logs -f watchdog` for `over limit` / `KICK` lines. Tunables in `.env.example`.
+  Supervision: crash -> auto-restart (`unless-stopped`); 12 consecutive poll failures -> exit(1) for recycle;
+  Docker HEALTHCHECK (heartbeat freshness) + VM cron `watchdog-health.sh` (*/2) restarts missing/unhealthy containers,
+  optional `ALERT_WEBHOOK_URL` alert. Check with `docker inspect -f '{{.State.Health.Status}}' meta-watchdog`.
+- Traffic page: public `http://stats.meta-note-ex.com/` (host totals/day, JST). Built by cron (`traffic.py render` every 5min, `snapshot` 23:55). History before deploy is limited to vnstat's ~30d daily retention; monthly totals go back 12 months.
 - Monitor: UptimeRobot TCP `1935` + `554` (free). OCI Billing alarm recommended (egress ~0.9GB/h/viewer at 2M).
 - OS auto-update: `unattended-upgrades` (provision.sh). MediaMTX: manual `pull` (pin `MTX_IMAGE` on release).
 - Publish path is restricted to `live/*` (`mediamtx.yml`). Key collision = same as Topaz (use unique key).

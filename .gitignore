@@ -2,3 +2,7 @@
 recordings/
 *.log
 mediamtx.log
+# generated traffic page + history (built on VM by cron)
+public/index.html
+public/traffic.json
+data/*.csv
