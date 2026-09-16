@@ -88,6 +88,10 @@ class TestTraffic(unittest.TestCase):
     def test_fmt_gb(self):
         self.assertEqual(tr.fmt_gb(2_500_000_000), "2.50")
 
+    def test_render_html_empty_months(self):
+        html = tr.render_html({"updated": "t", "iface": "ens3", "months": {}})
+        self.assertIn("データなし", html)
+
 
 if __name__ == "__main__":
     unittest.main()

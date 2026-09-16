@@ -20,11 +20,16 @@ No transcode (remux only). Key model = Topaz (key is public, part of URL).
 Limits (Topaz parity, enforced server-side by watchdog): video <=2000k, audio <=320k, H.264+AAC, GOP 2s, B-frames 0.
 Combined ingress >`MAX_TOTAL_KBPS` (default 2500k) sustained over `POLL_INTERVAL`x`VIOLATION_LIMIT` (~15s) is kicked.
 
+## Docs
+
+- User guide: `docs/usage.md` (keys, limits, hijack spec). Terms: `docs/terms.md`. Privacy: `docs/privacy.md`.
+- Ops runbook: `docs/ops.md` (manual kick/ban, restart, rebuild).
+
 ## Prereqs
 
 - Oracle Always Free A1 VM (Ubuntu 24.04 ARM, 1OCPU/6GB), public IP `<OCI_IP>`
 - Cloudflare DNS for `meta-note-ex.com` (already in use)
-- This repo cloned to `/opt/meta-streamer` on the VM
+- Deploy files copied to `/opt/meta-streamer` on the VM (keep layout)
 
 ## 1. Network (two layers required)
 
@@ -44,11 +49,11 @@ VM firewall is set by `scripts/provision.sh` (UFW same ports).
 ```bash
 # on VM, first time
 bash scripts/provision.sh
-mkdir -p /opt/meta-streamer/scripts /opt/meta-streamer/public /opt/meta-streamer/data && cp docker-compose.yml mediamtx.yml /opt/meta-streamer/ && cp scripts/bitrate-watchdog.py scripts/traffic.py scripts/watchdog-health.sh /opt/meta-streamer/scripts/
+mkdir -p /opt/meta-streamer/scripts /opt/meta-streamer/public /opt/meta-streamer/data /opt/meta-streamer/traffic /opt/meta-streamer/docs && cp docker-compose.yml mediamtx.yml /opt/meta-streamer/ && cp scripts/bitrate-watchdog.py scripts/traffic.py scripts/watchdog-health.sh scripts/mtx-api.sh /opt/meta-streamer/scripts/ && cp traffic/nginx.conf /opt/meta-streamer/traffic/ && cp docs/*.md /opt/meta-streamer/docs/
 cd /opt/meta-streamer && docker compose up -d && docker compose logs -f
 ```
 
-Update: `cp` changed files the same way, then `docker compose pull && docker compose up -d`. Config is `mediamtx.yml` only; no DB.
+Update: `cp` changed files the same way, then `docker compose pull && docker compose up -d`. No DB (state: `data/traffic-daily.csv` only).
 Watchdog thresholds via `.env` (`MAX_TOTAL_KBPS`, `POLL_INTERVAL`, `VIOLATION_LIMIT`).
 
 ## 3. Test
@@ -71,9 +76,9 @@ ezStreamer: set Ingest URL to `rtmp://live.meta-note-ex.com/live`; PC/Quest copy
   Docker HEALTHCHECK (heartbeat freshness) + VM cron `watchdog-health.sh` (*/2) restarts missing/unhealthy containers,
   optional `ALERT_WEBHOOK_URL` alert. Check with `docker inspect -f '{{.State.Health.Status}}' meta-watchdog`.
 - Traffic page: public `http://stats.meta-note-ex.com/` (host totals/day, JST). Built by cron (`traffic.py render` every 5min, `snapshot` 23:55). History before deploy is limited to vnstat's ~30d daily retention; monthly totals go back 12 months.
-- Monitor: UptimeRobot TCP `1935` + `554` (free). OCI Billing alarm recommended (egress ~0.9GB/h/viewer at 2M).
-- OS auto-update: `unattended-upgrades` (provision.sh). MediaMTX: manual `pull` (pin `MTX_IMAGE` on release).
-- Publish path is restricted to `live/*` (`mediamtx.yml`). Key collision = same as Topaz (use unique key).
+- Monitor: UptimeRobot TCP `1935` + `554` + HTTP `80` (free). mediamtx image has no shell, so no in-container HEALTHCHECK — external checks are the health signal. OCI Billing alarm recommended (egress ~0.9GB/h/viewer at 2M).
+- OS auto-update: `unattended-upgrades` (provision.sh). MediaMTX: pinned (`MTX_IMAGE`, bump deliberately) + manual `pull`.
+- Publish path is restricted to `live/*` (`mediamtx.yml`). Key collision = same as Topaz (unguessable key required, see `docs/usage.md`).
 
 ## Troubleshooting
 
@@ -83,7 +88,7 @@ ezStreamer: set Ingest URL to `rtmp://live.meta-note-ex.com/live`; PC/Quest copy
 | RTSP plays in VLC but gray in VRChat | Encoder preset: x264 `zerolatency` / NVENC Low Latency NG (Topaz parity). Use ezStreamer defaults. |
 | `:554 permission denied` | `cap_add: NET_BIND_SERVICE` required (already in compose). |
 | No port in URL fails, `:8554` works | Container `rtspAddress: :554` + host map `554:554` missing. `docker compose config` to verify. |
-| High-bitrate publisher not kicked | `docker compose logs watchdog` + `curl http://127.0.0.1:9997/v3/paths/list` on VM via `docker compose exec mediamtx` network. Check `.env` thresholds. |
+| High-bitrate publisher not kicked | `docker compose logs watchdog` + `scripts/mtx-api.sh GET /v3/paths/list`. Check `.env` thresholds. |
 | Watchdog `paths/list failed` | `mediamtx` not ready or `api: true` missing. `docker compose logs mediamtx`. API is compose-internal only (9997 unpublished). |
 
 ## P1 (not in MVP)

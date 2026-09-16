@@ -1,9 +1,12 @@
 services:
   mediamtx:
-    # Pinned image recommended for releases, e.g. bluenviron/mediamtx:v1.15.2
-    image: ${MTX_IMAGE:-bluenviron/mediamtx:latest}
+    # Pinned release (multi-arch incl. ARM64 for Oracle A1). Bump deliberately.
+    image: ${MTX_IMAGE:-bluenviron/mediamtx:1.21.0}
     container_name: meta-streamer
     restart: unless-stopped
+    # 1 OCPU VM: cap runaway RSS/CPU so one bad stream can't starve the host.
+    mem_limit: 1g
+    cpus: "1.0"
     # :554 allows Topaz-compatible URLs without port
     # (rtspt://live.meta-note-ex.com/live/{key}).
     # Host 8554 -> container 554 is an alias for clients that require explicit port.
@@ -28,6 +31,13 @@ services:
     image: python:3.12-slim
     container_name: meta-watchdog
     restart: unless-stopped
+    # Least privilege: stdlib-only poller, needs net + /tmp heartbeat only.
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 128m
+    cpus: "0.25"
     depends_on:
       - mediamtx
     environment:
@@ -56,10 +66,24 @@ services:
     image: nginx:alpine
     container_name: meta-traffic
     restart: unless-stopped
+    # Non-root nginx on 8080 (mapped to host 80). Static files only.
+    user: "101:101"
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 64m
+    cpus: "0.25"
     ports:
-      - "80:80" # public traffic page
+      - "80:8080" # public traffic page
     volumes:
+      - ./traffic/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./public:/usr/share/nginx/html:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/traffic.json || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 360s # first cron render lands within ~5 min of provision
     logging:
       driver: json-file
       options:

@@ -189,7 +189,8 @@ function show(){{
 sel.onchange=show;
 document.getElementById("updated").textContent=D.updated;
 document.getElementById("iface").textContent=D.iface;
-show();
+if(sel.options.length>0){{show();}}
+else{{document.getElementById("rows").innerHTML="<tr><td colspan=4>データなし (初回集計待ち)</td></tr>";}}
 </script>
 </body>
 </html>

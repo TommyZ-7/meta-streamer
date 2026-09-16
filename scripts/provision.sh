@@ -41,7 +41,7 @@ sudo ufw status verbose
 echo "[4/5] deploy dir: ${DEPLOY_DIR}"
 sudo mkdir -p "${DEPLOY_DIR}/scripts" "${DEPLOY_DIR}/public" "${DEPLOY_DIR}/data"
 sudo chown -R "$USER":"$USER" "${DEPLOY_DIR}"
-echo "Copy docker-compose.yml + mediamtx.yml + scripts/*.py to ${DEPLOY_DIR} (keep layout), then:"
+echo "Copy compose+yml+scripts+traffic conf+docs to ${DEPLOY_DIR} (keep layout), then:"
 echo "  cd ${DEPLOY_DIR} && docker compose up -d && docker compose logs -f"
 
 echo "[4.5/5] cron: traffic page render (*/5) + daily snapshot (23:55 JST) + watchdog health (*/2)"
@@ -50,5 +50,8 @@ CRON_SNAP="55 23 * * * TZ=Asia/Tokyo python3 ${DEPLOY_DIR}/scripts/traffic.py sn
 CRON_WD="*/2 * * * * DEPLOY_DIR=${DEPLOY_DIR} bash ${DEPLOY_DIR}/scripts/watchdog-health.sh"
 ( crontab -l 2>/dev/null | grep -v 'scripts/traffic.py' | grep -v 'scripts/watchdog-health.sh' ; echo "$CRON_RENDER" ; echo "$CRON_SNAP" ; echo "$CRON_WD" ) | crontab -
 crontab -l | grep -E 'scripts/(traffic.py|watchdog-health.sh)'
+
+echo "[4.6/5] initial traffic page render (best effort; empty until vnstat has data)"
+TZ=Asia/Tokyo python3 "${DEPLOY_DIR}/scripts/traffic.py" render >> "${DEPLOY_DIR}/traffic-cron.log" 2>&1 || true
 
 echo "[5/5] done. Next: Oracle VCN ingress (same ports) + Cloudflare DNS (gray cloud)."
