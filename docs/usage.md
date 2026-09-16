@@ -1,4 +1,4 @@
-# 利用案内 (meta-streamer / TopazChat互換)
+# 利用案内 (meta-streamer)
 
 ## できること
 - `ezStreamer` / OBS からRTMPで配信し、VRChat内の動画プレイヤーで低遅延再生する。
