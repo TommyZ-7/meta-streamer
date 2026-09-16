@@ -26,7 +26,10 @@ hls: false
 webrtc: false
 srt: false
 moq: false
-api: false
+# Control API: localhost/docker内のみ。watchdogがinboundBytes監視+kickに使用。
+# 9997はcomposeでpublishしないため外部公開なし。
+api: true
+apiAddress: :9997
 metrics: false
 pprof: false
 playback: false
@@ -44,6 +47,12 @@ authInternalUsers:
         path: "~^live/"
       - action: read
         path: "~^live/"
+  # watchdog (compose内) + localhost用。9997は未publishのため外部からは到達不可。
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+    permissions:
+      - action: api
 
 pathDefaults:
   source: publisher

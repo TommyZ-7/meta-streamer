@@ -23,3 +23,24 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+  # Bitrate watchdog: live/* の合計ingress(映像+音声)が上限を超過し続けたらkick
+  watchdog:
+    image: python:3.12-slim
+    container_name: meta-watchdog
+    restart: unless-stopped
+    depends_on:
+      - mediamtx
+    environment:
+      - MTX_API_BASE=http://mediamtx:9997
+      - MAX_TOTAL_KBPS=${MAX_TOTAL_KBPS:-2500}
+      - POLL_INTERVAL=${POLL_INTERVAL:-5}
+      - VIOLATION_LIMIT=${VIOLATION_LIMIT:-3}
+      - PATH_PREFIX=live/
+    volumes:
+      - ./scripts/bitrate-watchdog.py:/watchdog.py:ro
+    command: ["python3", "-u", "/watchdog.py"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
